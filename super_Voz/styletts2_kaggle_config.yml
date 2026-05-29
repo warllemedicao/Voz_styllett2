@@ -1,0 +1,51 @@
+
+repo_url: "https://github.com/warllemedicao/Voz_styllett2.git"
+repo_dir: "/kaggle/working/Super_voz"
+project_subdir: "super_Voz"
+
+styletts2_repo: "https://github.com/yl4579/StyleTTS2.git"
+styletts2_dir: "/kaggle/working/StyleTTS2"
+output_dir: "/kaggle/working/super_Voz_outputs"
+
+# Configuração do Cloudflare R2 (S3-compatible)
+cloudflare_r2:
+  endpoint_url: "https://dcd864c77e805b2f1488a63f44732e08.r2.cloudflarestorage.com"
+  access_key_id: "a9692b69ee0785f2c3ffd4bc66b56f88"
+  secret_access_key: "ed3f7dd6dcdec6041fd603a1bb57e67775f3f0ed92752a9b295f002f113241c2"
+  bucket_name: "super-voz"
+  raw_audio_prefix: "Audios_brutos/"
+  processed_audio_prefix: "Audios_processados/"
+  output_prefix: "super_Voz_outputs/"
+
+# Caminhos locais no Kaggle (onde os dados serão colocados após download do R2)
+raw_audio_candidates:
+  - "Audios_brutos"
+  - "/kaggle/input/super-voz/Audios_brutos"
+  - "/kaggle/input/super-voz/Audios_Brutos"
+
+processed_audio_candidates:
+  - "Audios_processados"
+  - "/kaggle/input/super-voz/Audios_processados"
+
+speaker: "0"
+sample_rate: 24000
+val_ratio: 0.05
+phonemize: true
+phonemizer_language: "pt-br"
+
+# Configuração otimizada para Kaggle P100/T4
+epochs: 50
+batch_size: 2
+max_len: 160
+save_freq: 5
+log_interval: 10
+
+joint_epoch: 999
+diff_epoch: 10
+
+batch_percentage: 0.125
+slm_min_len: 120
+slm_max_len: 220
+
+max_audio_seconds: 12
+max_text_chars: 280
