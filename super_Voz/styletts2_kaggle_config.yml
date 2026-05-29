@@ -1,0 +1,49 @@
+
+repo_url: "https://github.com/warllemedicao/Voz_styllett2.git"
+repo_dir: "/kaggle/working/Super_voz"
+project_subdir: "super_Voz"
+
+styletts2_repo: "https://github.com/yl4579/StyleTTS2.git"
+styletts2_dir: "/kaggle/working/StyleTTS2"
+output_dir: "/kaggle/working/super_Voz_outputs"
+
+# IDs do Google Drive para download via gdown (opcional)
+# Se preenchidos, o script tentará baixar os zips e extrair.
+# Exemplo: drive_raw_audio_zip_id: "1abc..."
+drive_raw_audio_zip_id: ""
+drive_processed_audio_zip_id: ""
+
+# Caminhos locais no Kaggle (onde os dados serão colocados)
+raw_audio_candidates:
+  - "/kaggle/input/super-voz/Audios_brutos"
+  - "/kaggle/input/super-voz/Audios_Brutos"
+  - "/kaggle/working/Audios_brutos"
+  - "/tmp/Audios_brutos"
+
+processed_audio_candidates:
+  - "/kaggle/input/super-voz/Audios_processados"
+  - "/kaggle/working/Audios_processados"
+  - "/tmp/Audios_processados"
+
+speaker: "0"
+sample_rate: 24000
+val_ratio: 0.05
+phonemize: true
+phonemizer_language: "pt-br"
+
+# Configuração otimizada para Kaggle P100/T4
+epochs: 50
+batch_size: 2
+max_len: 160
+save_freq: 5
+log_interval: 10
+
+joint_epoch: 999
+diff_epoch: 10
+
+batch_percentage: 0.125
+slm_min_len: 120
+slm_max_len: 220
+
+max_audio_seconds: 12
+max_text_chars: 280
