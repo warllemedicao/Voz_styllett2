@@ -37,9 +37,10 @@ Implementação de ferramentas de estado-da-arte para análise e limpeza, focand
 
 ## Modificações Realizadas
 - [x] Criação de `super_voz.md`.
-- [x] Atualização de `styletts2_colab_config.yml` (removendo candidatos de áudios processados).
+- [x] Atualização de `styletts2_colab_config.yml` (removendo candidatos de áudios processados e ativando Google Drive).
 - [x] Upgrade do `limpeza_ia.py` para a Versão 2 (DNSMOS + Resemble Enhance).
-- [x] Atualização do `run_pipeline.py` para instalar as novas dependências automaticamente.
+- [x] Atualização do `run_pipeline.py`, `run_colab_styletts2.py` e `run_kaggle_styletts2.py` para desinstalar o `onnxruntime` padrão (evitando conflitos) e instalar as novas dependências de GPU automaticamente.
+- [x] Adição do script de auto-montagem do Google Drive no notebook do Colab para salvar os checkpoints (preventivo contra queda de sessão).
 
 ## ⚠️ AVISO IMPORTANTE SOBRE COLAB/KAGGLE
 O ambiente do Colab e Kaggle **clona este repositório do GitHub**. 
