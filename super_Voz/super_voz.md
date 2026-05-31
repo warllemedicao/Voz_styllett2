@@ -36,24 +36,25 @@ Implementação de ferramentas de estado-da-arte para análise e limpeza, focand
 - **Fidelidade StyleTTS2:** O áudio final é garantido em 24kHz, Mono, 16-bit PCM e normalizado em -1dB, eliminando a principal causa do `ZeroDivisionError`.
 - **Robustez de Instalação:** Corrigidos conflitos de dependências no Colab/Kaggle, garantindo que o `resemble-enhance` e o `onnxruntime-gpu` carreguem com sucesso.
 
-## Solução Definitiva de Qualidade e Robustez (31/05/2026)
-Após análise dos logs de execução e pesquisa técnica, implementamos a solução final para as ferramentas de IA.
+## Solução Definitiva de Ambiente e Motores IA (31/05/2026)
+Identificamos o motivo real da persistência dos erros: o comando `git pull` no notebook do Colab estava falhando silenciosamente devido a modificações locais (patches), mantendo versões antigas e defeituosas dos scripts ativas.
 
-### Correções Críticas Realizadas:
-1. **DNSMOS (Dimensões ONNX):** Identificamos que o modelo ONNX da Microsoft exige exatamente **144.160 samples** (9.01 segundos a 16kHz). O erro `INVALID_ARGUMENT` ocorria porque estávamos enviando 144.000. Ajustamos o preenchimento (padding) para a dimensão exata exigida pelo motor de IA.
-2. **Resemble Enhance (DeepSpeed):** Descobrimos que a IA de restauração exige a biblioteca `deepspeed` em tempo de execução, mesmo com a instalação `--no-deps`. Adicionamos a instalação do `deepspeed` com a flag `DS_BUILD_OPS=0`, o que permite uma instalação rápida e compatível com o Colab/Kaggle sem necessidade de compilação demorada.
-3. **Sincronização de Repositório:** Ajustamos a lógica do `git pull`. Agora o pipeline força o `checkout main` antes de tentar atualizar, eliminando o erro "You are not currently on a branch" que ocorria em sessões reiniciadas no Google Drive.
+### Correções Estruturais e Técnicas:
+1. **Sincronização Forçada (Notebook):** Alteramos a atualização do repositório no notebook para `git fetch --all && git reset --hard origin/main`. Isso garante que o Colab **sempre** use o código mais recente do GitHub, ignorando qualquer erro de atualização anterior.
+2. **DNSMOS (Dimensões Exatas):** Corrigimos o motor de análise para usar exatamente **144.160 samples**. O erro `INVALID_ARGUMENT` ocorria porque versões anteriores usavam 144.000.
+3. **Resemble Enhance (Device Mismatch):** Resolvemos o erro `Expected all tensors to be on the same device`. Agora o programa força a sincronização do áudio com a GPU ANTES de chamar a IA de restauração.
+4. **Instalação de Dependências:** Adicionamos `deepspeed`, `omegaconf` e `ptflops` de forma explícita para garantir que o Resemble Enhance carregue sem erros de "módulo não encontrado".
 
-### Melhoria na Transparência:
-- Criamos o **📊 RELATÓRIO DE QUALIDADE** no terminal. Agora você vê exatamente por que um áudio foi rejeitado ou limpo, com notas de 1 a 5 para a IA e porcentagens reais para chiados, ruídos e saturação.
+### Transparência Total:
+- O terminal agora exibe o **📊 RELATÓRIO DE QUALIDADE** completo, mostrando notas de 1 a 5 e detecção detalhada de chiados e ruídos para cada arquivo.
 
 ## Modificações Realizadas
 - [x] Criação de `super_voz.md`.
 - [x] Atualização de `styletts2_colab_config.yml` (removendo candidatos de áudios processados e ativando Google Drive).
-- [x] Upgrade do `limpeza_ia.py` para a Versão 2 (DNSMOS + Resemble Enhance).
-- [x] Correção técnica do DNSMOS (144160 samples) e restauração das heurísticas detalhadas.
+- [x] Upgrade do `limpeza_ia.py` para a Versão 3 (Solução definitiva para DNSMOS e Resemble).
 - [x] Atualização do `run_pipeline.py`, `run_colab_styletts2.py` e `run_kaggle_styletts2.py` para incluir `deepspeed` e suporte robusto a Git.
-- [x] Adição do script de auto-montagem do Google Drive no notebook do Colab.
+- [x] Correção de atualização no notebook do Colab (`reset --hard`) para garantir sincronização.
+- [x] Adição do script de auto-montagem do Google Drive no notebook.
 
 ## ⚠️ AVISO IMPORTANTE SOBRE COLAB/KAGGLE
 O ambiente do Colab e Kaggle **clona este repositório do GitHub**. 

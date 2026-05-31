@@ -116,7 +116,7 @@ class AudioEnhancer:
             from resemble_enhance.enhancer.inference import enhance
             self.has_resemble = True
         except ImportError as e:
-            print(f"[AVISO] resemble-enhance não carregado: {e}")
+            print(f"[AVISO] resemble-enhance não carregado corretamente: {e}")
         except Exception as e:
             print(f"[AVISO] Erro ao carregar motor de restauração: {e}")
 
@@ -130,7 +130,7 @@ class AudioEnhancer:
             dwav, sr = librosa.load(str(input_path), sr=None)
             
             # ATENÇÃO: Para evitar erro de device mismatch, 
-            # enviamos para o device ANTES da chamada
+            # garantimos que o tensor está no device ANTES da chamada.
             dwav = torch.from_numpy(dwav).to(self.device).to(torch.float32)
             
             # Processar (Denoise + Enhance)
