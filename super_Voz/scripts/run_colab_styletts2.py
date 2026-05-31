@@ -116,7 +116,6 @@ def install_dependencies(style_dir: Path) -> None:
     print("[INFO] Verificando/Instalando dependências Python...")
     # Desinstalar onnxruntime comum para evitar conflito com a versão GPU
     run([sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"], check=False)
-    
     run([
         sys.executable,
         "-m",
@@ -135,9 +134,11 @@ def install_dependencies(style_dir: Path) -> None:
         "openai-whisper",
         "demucs",
         "boto3",
-        "resemble-enhance",
         "onnxruntime-gpu"
     ])
+
+    # Instalar resemble-enhance sem dependências para não forçar downgrade do PyTorch
+    run([sys.executable, "-m", "pip", "install", "-q", "--no-deps", "resemble-enhance"])
 
     requirements = style_dir / "requirements.txt"
     if requirements.exists():
