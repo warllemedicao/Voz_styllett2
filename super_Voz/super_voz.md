@@ -29,11 +29,12 @@ Implementação de ferramentas de estado-da-arte para análise e limpeza, focand
 ### Novas Tecnologias Integradas:
 1. **DNSMOS (Microsoft):** Substituímos a análise manual por uma rede neural que dá notas de 1 a 5 para a qualidade da voz (MOS). Isso evita processar áudios que já estão perfeitos e garante que áudios ruins sejam detectados com precisão.
 2. **Resemble Enhance:** Substituímos o Demucs pelo Resemble Enhance como ferramenta principal. Ele não apenas limpa o ruído, mas faz **Super-Resolution**, reconstruindo frequências perdidas em áudios de baixa qualidade (ex: gravações de WhatsApp ou microfones baratos).
-3. **ONNX Runtime:** Uso de aceleração por GPU para a análise de qualidade, tornando o processo mais rápido.
+3. **Sistema Híbrido de Análise:** Restauramos as **Heurísticas de Ruído e Assobio (Hissing)** para trabalhar em conjunto com a IA. Agora, o programa reporta exatamente quais defeitos foram encontrados (ex: "Ruído constante", "Chiado agudo"), dando mais transparência ao usuário.
 
 ### Impacto no Processo:
 - **Segurança:** O programa agora é mais inteligente. Se o `DNSMOS` der uma nota alta, o áudio original é preservado para evitar artefatos de IA.
-- **Fidelidade StyleTTS2:** O áudio final é garantido em 24kHz, Mono, 16-bit PCM e normalizado em -1dB, eliminando a principal causa do `ZeroDivisionError` (datasets rejeitados por formato inválido ou silêncio excessivo).
+- **Fidelidade StyleTTS2:** O áudio final é garantido em 24kHz, Mono, 16-bit PCM e normalizado em -1dB, eliminando a principal causa do `ZeroDivisionError`.
+- **Robustez de Instalação:** Corrigidos conflitos de dependências no Colab/Kaggle, garantindo que o `resemble-enhance` e o `onnxruntime-gpu` carreguem com sucesso.
 
 ## Modificações Realizadas
 - [x] Criação de `super_voz.md`.

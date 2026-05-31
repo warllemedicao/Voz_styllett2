@@ -87,7 +87,11 @@ def install_dependencies(style_dir: Path, env: str):
         # Desinstalar onnxruntime comum para evitar conflito com a versão GPU
         run([sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"], check=False)
 
-    pkgs = ["torch", "torchaudio", "torchvision", "accelerate", "huggingface_hub", "pyyaml", "librosa", "soundfile", "phonemizer", "openai-whisper", "demucs", "boto3", "onnxruntime-gpu"]
+    pkgs = [
+        "torch", "torchaudio", "torchvision", "accelerate", "huggingface_hub", 
+        "pyyaml", "librosa", "soundfile", "phonemizer", "openai-whisper", "demucs", 
+        "boto3", "onnxruntime-gpu", "omegaconf", "ptflops", "celluloid", "rich", "matplotlib"
+    ]
     run([sys.executable, "-m", "pip", "install", "-q"] + pkgs)
     
     # Instalar resemble-enhance sem dependências para não forçar downgrade do PyTorch

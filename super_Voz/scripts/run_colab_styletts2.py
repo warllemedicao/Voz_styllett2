@@ -134,7 +134,17 @@ def install_dependencies(style_dir: Path) -> None:
         "openai-whisper",
         "demucs",
         "boto3",
-        "onnxruntime-gpu"
+        "onnxruntime-gpu",
+        "omegaconf",
+        "ptflops",
+        "celluloid",
+        "rich",
+        "matplotlib"
+    ])
+        "ptflops",
+        "celluloid",
+        "rich",
+        "matplotlib"
     ])
 
     # Instalar resemble-enhance sem dependências para não forçar downgrade do PyTorch

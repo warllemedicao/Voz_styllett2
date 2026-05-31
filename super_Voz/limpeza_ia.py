@@ -74,10 +74,9 @@ class DNSMOS:
 
     def score(self, audio: np.ndarray, sr: int) -> dict:
         if self.session is None:
-            # Se falhou, retornamos score baixo para forçar a limpeza preventiva
+            # Se falhou carregamento, retornamos score baixo para forçar a limpeza preventiva
             return {"ovrl": 0.4, "sig": 0.4, "bak": 0.4} 
 
-        
         try:
             # Resample para 16kHz (exigência do DNSMOS)
             if sr != 16000:
@@ -100,7 +99,8 @@ class DNSMOS:
                 "bak": (outputs[0][0][1] - 1) / 4,
                 "ovrl": (outputs[0][0][2] - 1) / 4
             }
-        except:
+        except Exception as e:
+            print(f"  [ERRO DNSMOS] Falha na inferência: {e}")
             return {"ovrl": 0.5, "sig": 0.5, "bak": 0.5}
 
 # ============================================================
@@ -115,8 +115,8 @@ class AudioEnhancer:
         try:
             from resemble_enhance.enhancer.inference import enhance
             self.has_resemble = True
-        except ImportError:
-            print("[AVISO] resemble-enhance não instalado.")
+        except ImportError as e:
+            print(f"[AVISO] resemble-enhance não carregado corretamente: {e}")
 
     def process(self, input_path: Path, output_path: Path):
         if not self.has_resemble:
@@ -129,7 +129,6 @@ class AudioEnhancer:
             dwav = torch.from_numpy(dwav).to(self.device)
             
             # Processar (Denoise + Enhance)
-            # nfe=32 é um bom equilíbrio velocidade/qualidade
             hwav, sr = enhance(dwav, sr, self.device, nfe=32, solver="midpoint", lambd=0.5)
             
             # Salvar
@@ -146,6 +145,8 @@ class AudioEnhancer:
 class AudioAnalyzer:
     def __init__(self, sr: int = 24000):
         self.sr = sr
+        self.n_fft = 1024
+        self.hop_length = 256
         self.mos_tool = DNSMOS()
 
     def analyze(self, audio_path: str, verbose: bool = False) -> dict:
@@ -159,18 +160,35 @@ class AudioAnalyzer:
         # 1. DNSMOS (IA Realista)
         mos_scores = self.mos_tool.score(audio, sr)
         
-        # 2. Heurísticas Básicas (Fallback/Complemento)
-        # Clipping
-        clipping = np.mean(np.abs(audio) > 0.99)
-        # Silêncio
+        # 2. Heurísticas Básicas (Fallback/Complemento detalhado)
+        mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_fft=self.n_fft, hop_length=self.hop_length, n_mels=80, power=2.0)
+        mel_db = librosa.power_to_db(mel_spec, ref=np.max)
+        D = np.abs(librosa.stft(audio, n_fft=self.n_fft, hop_length=self.hop_length))
+        
         silence = np.mean(np.abs(audio) < 0.01)
+        clipping = np.mean(np.abs(audio) > 0.99)
+        
+        # Ruído (Heurística)
+        media_espectral = np.mean(mel_db, axis=1)
+        desvio_espectral = np.std(media_espectral)
+        ruido_heu = max(0, 1 - (desvio_espectral / 10.0))
+        
+        # Hissing
+        freq_bins = np.fft.rfftfreq(self.n_fft, 1/sr)
+        hissing_idx = freq_bins > 8000
+        energia_hissing = np.mean(np.abs(D[hissing_idx, :])) if np.any(hissing_idx) else 0
+        energia_total = np.mean(np.abs(D))
+        razao_hissing = (energia_hissing / energia_total) if energia_total > 0 else 0
+        hissing_heu = min(razao_hissing * 5, 1.0)
         
         # Problemas detectados
         problemas = []
-        if mos_scores['ovrl'] < 0.6: problemas.append(f"Qualidade baixa (MOS: {mos_scores['ovrl']:.2f})")
-        if mos_scores['bak'] < 0.5: problemas.append("Ruído de fundo detectado")
+        if mos_scores['ovrl'] < 0.6: problemas.append(f"Qualidade baixa detectada pela IA (MOS: {mos_scores['ovrl']*5:.1f}/5.0)")
+        if mos_scores['bak'] < 0.5: problemas.append("Ruído de fundo detectado pela IA")
         if clipping > 0.05: problemas.append("Clipping (Saturação) detectado")
         if silence > 0.7: problemas.append("Silêncio excessivo")
+        if ruido_heu > 0.6 and mos_scores['bak'] >= 0.5: problemas.append("Ruído constante detectado (Heurística)")
+        if hissing_heu > 0.5: problemas.append("Hissing (Assobio/Chiado) detectado")
 
         # Score final ponderado (predominância para o MOS)
         score_geral = mos_scores['ovrl'] * 0.8 + (1.0 - clipping) * 0.2
@@ -190,7 +208,9 @@ class AudioAnalyzer:
                 "dnsmos_bak": mos_scores['bak'],
                 "dnsmos_sig": mos_scores['sig'],
                 "clipping": clipping,
-                "silence": silence
+                "silence": silence,
+                "ruido_heu": ruido_heu,
+                "hissing_heu": hissing_heu
             }
         }
         
