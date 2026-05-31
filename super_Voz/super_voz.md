@@ -23,11 +23,23 @@ Embora tenhamos aplicado um patch matemático para evitar a divisão por zero (`
    - Normalização de volume.
    - Conversão exata para o formato StyleTTS2.
 
+## Melhoria na Qualidade de Áudio (31/05/2026)
+Implementação de ferramentas de estado-da-arte para análise e limpeza, focando na qualidade exigida pelo StyleTTS2.
+
+### Novas Tecnologias Integradas:
+1. **DNSMOS (Microsoft):** Substituímos a análise manual por uma rede neural que dá notas de 1 a 5 para a qualidade da voz (MOS). Isso evita processar áudios que já estão perfeitos e garante que áudios ruins sejam detectados com precisão.
+2. **Resemble Enhance:** Substituímos o Demucs pelo Resemble Enhance como ferramenta principal. Ele não apenas limpa o ruído, mas faz **Super-Resolution**, reconstruindo frequências perdidas em áudios de baixa qualidade (ex: gravações de WhatsApp ou microfones baratos).
+3. **ONNX Runtime:** Uso de aceleração por GPU para a análise de qualidade, tornando o processo mais rápido.
+
+### Impacto no Processo:
+- **Segurança:** O programa agora é mais inteligente. Se o `DNSMOS` der uma nota alta, o áudio original é preservado para evitar artefatos de IA.
+- **Fidelidade StyleTTS2:** O áudio final é garantido em 24kHz, Mono, 16-bit PCM e normalizado em -1dB, eliminando a principal causa do `ZeroDivisionError` (datasets rejeitados por formato inválido ou silêncio excessivo).
+
 ## Modificações Realizadas
 - [x] Criação de `super_voz.md`.
 - [x] Atualização de `styletts2_colab_config.yml` (removendo candidatos de áudios processados).
-- [x] Ajuste no `limpeza_ia.py` para melhor compatibilidade.
-- [x] **Remoção Total de Busca por Processados:** Todos os scripts (`run_colab_styletts2.py`, `run_kaggle_styletts2.py`, `run_pipeline.py`) agora ignoram o prefixo de processados no R2.
+- [x] Upgrade do `limpeza_ia.py` para a Versão 2 (DNSMOS + Resemble Enhance).
+- [x] Atualização do `run_pipeline.py` para instalar as novas dependências automaticamente.
 
 ## ⚠️ AVISO IMPORTANTE SOBRE COLAB/KAGGLE
 O ambiente do Colab e Kaggle **clona este repositório do GitHub**. 

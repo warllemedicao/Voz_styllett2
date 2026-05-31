@@ -85,7 +85,7 @@ def install_dependencies(style_dir: Path, env: str):
         run(["apt-get", "update"], check=False)
         run(["apt-get", "install", "-y", "ffmpeg", "sox", "libsndfile1", "espeak-ng"], check=False)
 
-    pkgs = ["torch", "torchaudio", "torchvision", "accelerate", "huggingface_hub", "pyyaml", "librosa", "soundfile", "phonemizer", "openai-whisper", "demucs", "boto3"]
+    pkgs = ["torch", "torchaudio", "torchvision", "accelerate", "huggingface_hub", "pyyaml", "librosa", "soundfile", "phonemizer", "openai-whisper", "demucs", "boto3", "resemble-enhance", "onnxruntime-gpu"]
     run([sys.executable, "-m", "pip", "install", "-q"] + pkgs)
 
     reqs = style_dir / "requirements.txt"
