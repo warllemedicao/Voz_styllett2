@@ -18,6 +18,8 @@ def run(cmd, cwd=None, check=True):
 
 def clone_or_pull(url: str, dest: Path) -> None:
     if dest.exists():
+        # Garantir que estamos em uma branch antes de dar pull
+        run(["git", "-C", str(dest), "checkout", "main"], check=False)
         run(["git", "-C", str(dest), "pull", "--ff-only"], check=False)
     else:
         run(["git", "clone", url, str(dest)])
@@ -116,6 +118,10 @@ def install_dependencies(style_dir: Path) -> None:
     print("[INFO] Verificando/Instalando dependências Python...")
     # Desinstalar onnxruntime comum para evitar conflito com a versão GPU
     run([sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"], check=False)
+    
+    # Configuração para instalação rápida do DeepSpeed sem compilação de C++ ops
+    os.environ["DS_BUILD_OPS"] = "0"
+    
     run([
         sys.executable,
         "-m",
@@ -139,7 +145,8 @@ def install_dependencies(style_dir: Path) -> None:
         "ptflops",
         "celluloid",
         "rich",
-        "matplotlib"
+        "matplotlib",
+        "deepspeed"
     ])
 
     # Instalar resemble-enhance sem dependências para não forçar downgrade do PyTorch

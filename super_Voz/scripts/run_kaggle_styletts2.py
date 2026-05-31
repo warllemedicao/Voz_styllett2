@@ -18,6 +18,8 @@ def run(cmd, cwd=None, check=True):
 
 def clone_or_pull(url: str, dest: Path) -> None:
     if dest.exists():
+        # Garantir que estamos em uma branch antes de dar pull
+        run(["git", "-C", str(dest), "checkout", "main"], check=False)
         run(["git", "-C", str(dest), "pull", "--ff-only"], check=False)
     else:
         run(["git", "clone", url, str(dest)])

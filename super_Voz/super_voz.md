@@ -36,13 +36,24 @@ Implementação de ferramentas de estado-da-arte para análise e limpeza, focand
 - **Fidelidade StyleTTS2:** O áudio final é garantido em 24kHz, Mono, 16-bit PCM e normalizado em -1dB, eliminando a principal causa do `ZeroDivisionError`.
 - **Robustez de Instalação:** Corrigidos conflitos de dependências no Colab/Kaggle, garantindo que o `resemble-enhance` e o `onnxruntime-gpu` carreguem com sucesso.
 
+## Solução Definitiva de Qualidade e Robustez (31/05/2026)
+Após análise dos logs de execução e pesquisa técnica, implementamos a solução final para as ferramentas de IA.
+
+### Correções Críticas Realizadas:
+1. **DNSMOS (Dimensões ONNX):** Identificamos que o modelo ONNX da Microsoft exige exatamente **144.160 samples** (9.01 segundos a 16kHz). O erro `INVALID_ARGUMENT` ocorria porque estávamos enviando 144.000. Ajustamos o preenchimento (padding) para a dimensão exata exigida pelo motor de IA.
+2. **Resemble Enhance (DeepSpeed):** Descobrimos que a IA de restauração exige a biblioteca `deepspeed` em tempo de execução, mesmo com a instalação `--no-deps`. Adicionamos a instalação do `deepspeed` com a flag `DS_BUILD_OPS=0`, o que permite uma instalação rápida e compatível com o Colab/Kaggle sem necessidade de compilação demorada.
+3. **Sincronização de Repositório:** Ajustamos a lógica do `git pull`. Agora o pipeline força o `checkout main` antes de tentar atualizar, eliminando o erro "You are not currently on a branch" que ocorria em sessões reiniciadas no Google Drive.
+
+### Melhoria na Transparência:
+- Criamos o **📊 RELATÓRIO DE QUALIDADE** no terminal. Agora você vê exatamente por que um áudio foi rejeitado ou limpo, com notas de 1 a 5 para a IA e porcentagens reais para chiados, ruídos e saturação.
+
 ## Modificações Realizadas
 - [x] Criação de `super_voz.md`.
 - [x] Atualização de `styletts2_colab_config.yml` (removendo candidatos de áudios processados e ativando Google Drive).
 - [x] Upgrade do `limpeza_ia.py` para a Versão 2 (DNSMOS + Resemble Enhance).
-- [x] Atualização do `run_pipeline.py`, `run_colab_styletts2.py` e `run_kaggle_styletts2.py` para desinstalar o `onnxruntime` padrão (evitando conflitos), instalar as novas dependências de GPU e corrigir a instalação do `resemble-enhance` (usando `--no-deps` para evitar conflitos de versão do PyTorch).
-- [x] Correção de um `IndentationError` no script do Colab e validação de consistência em todos os scripts de instalação.
-- [x] Adição do script de auto-montagem do Google Drive no notebook do Colab para salvar os checkpoints (preventivo contra queda de sessão).
+- [x] Correção técnica do DNSMOS (144160 samples) e restauração das heurísticas detalhadas.
+- [x] Atualização do `run_pipeline.py`, `run_colab_styletts2.py` e `run_kaggle_styletts2.py` para incluir `deepspeed` e suporte robusto a Git.
+- [x] Adição do script de auto-montagem do Google Drive no notebook do Colab.
 
 ## ⚠️ AVISO IMPORTANTE SOBRE COLAB/KAGGLE
 O ambiente do Colab e Kaggle **clona este repositório do GitHub**. 

@@ -74,26 +74,22 @@ class DNSMOS:
 
     def score(self, audio: np.ndarray, sr: int) -> dict:
         if self.session is None:
-            # Se falhou carregamento, retornamos score baixo para forçar a limpeza preventiva
             return {"ovrl": 0.4, "sig": 0.4, "bak": 0.4} 
 
         try:
-            # Resample para 16kHz (exigência do DNSMOS)
             if sr != 16000:
                 audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
             
-            # Garantir 9 segundos de áudio para estabilidade
-            target_len = 16000 * 9
+            # O modelo ONNX da Microsoft exige exatamente 144160 samples (9.01s)
+            target_len = 144160
             if len(audio) < target_len:
                 audio = np.pad(audio, (0, target_len - len(audio)))
             else:
                 audio = audio[:target_len]
 
-            # Rodar inferência
             inputs = {self.session.get_inputs()[0].name: audio.astype(np.float32)[np.newaxis, :]}
             outputs = self.session.run(None, inputs)
             
-            # Normalizar para 0-1 (original é 1-5)
             return {
                 "sig": (outputs[0][0][0] - 1) / 4,
                 "bak": (outputs[0][0][1] - 1) / 4,
@@ -101,6 +97,9 @@ class DNSMOS:
             }
         except Exception as e:
             print(f"  [ERRO DNSMOS] Falha na inferência: {e}")
+            # Se for erro de dimensão, logamos para debug
+            if "dimensions" in str(e):
+                print(f"    Dica: O modelo esperava {target_len} mas recebeu {len(audio)}")
             return {"ovrl": 0.5, "sig": 0.5, "bak": 0.5}
 
 # ============================================================
@@ -113,10 +112,14 @@ class AudioEnhancer:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.has_resemble = False
         try:
+            # Tentar importar de forma preguiçosa para não quebrar se falhar
+            import resemble_enhance
             from resemble_enhance.enhancer.inference import enhance
             self.has_resemble = True
         except ImportError as e:
-            print(f"[AVISO] resemble-enhance não carregado corretamente: {e}")
+            print(f"[AVISO] resemble-enhance não carregado: {e}")
+        except Exception as e:
+            print(f"[AVISO] Erro ao carregar motor de restauração: {e}")
 
     def process(self, input_path: Path, output_path: Path):
         if not self.has_resemble:
@@ -124,14 +127,11 @@ class AudioEnhancer:
 
         try:
             from resemble_enhance.enhancer.inference import enhance
-            # Carregar áudio
             dwav, sr = librosa.load(str(input_path), sr=None)
             dwav = torch.from_numpy(dwav).to(self.device)
             
-            # Processar (Denoise + Enhance)
             hwav, sr = enhance(dwav, sr, self.device, nfe=32, solver="midpoint", lambd=0.5)
             
-            # Salvar
             sf.write(str(output_path), hwav.cpu().numpy(), sr)
             return True
         except Exception as e:
@@ -173,7 +173,7 @@ class AudioAnalyzer:
         desvio_espectral = np.std(media_espectral)
         ruido_heu = max(0, 1 - (desvio_espectral / 10.0))
         
-        # Hissing
+        # Hissing (Chiado agudo)
         freq_bins = np.fft.rfftfreq(self.n_fft, 1/sr)
         hissing_idx = freq_bins > 8000
         energia_hissing = np.mean(np.abs(D[hissing_idx, :])) if np.any(hissing_idx) else 0
@@ -183,17 +183,16 @@ class AudioAnalyzer:
         
         # Problemas detectados
         problemas = []
-        if mos_scores['ovrl'] < 0.6: problemas.append(f"Qualidade baixa detectada pela IA (MOS: {mos_scores['ovrl']*5:.1f}/5.0)")
-        if mos_scores['bak'] < 0.5: problemas.append("Ruído de fundo detectado pela IA")
-        if clipping > 0.05: problemas.append("Clipping (Saturação) detectado")
-        if silence > 0.7: problemas.append("Silêncio excessivo")
-        if ruido_heu > 0.6 and mos_scores['bak'] >= 0.5: problemas.append("Ruído constante detectado (Heurística)")
-        if hissing_heu > 0.5: problemas.append("Hissing (Assobio/Chiado) detectado")
+        if mos_scores['ovrl'] < 0.6: problemas.append(f"Qualidade baixa (MOS IA: {mos_scores['ovrl']*5:.1f}/5.0)")
+        if mos_scores['bak'] < 0.5: problemas.append("Ruído de fundo detectado (IA)")
+        if clipping > 0.05: problemas.append("Clipping (Saturação/Distorção) detectado")
+        if silence > 0.7: problemas.append("Silêncio excessivo ou áudio muito baixo")
+        if ruido_heu > 0.6: problemas.append("Ruído de fundo constante (Heurística)")
+        if hissing_heu > 0.5: problemas.append("Chiado/Assobio agudo detectado (Hissing)")
 
-        # Score final ponderado (predominância para o MOS)
-        score_geral = mos_scores['ovrl'] * 0.8 + (1.0 - clipping) * 0.2
+        # Score final ponderado
+        score_geral = mos_scores['ovrl'] * 0.7 + (1.0 - clipping) * 0.15 + (1.0 - hissing_heu) * 0.15
         
-        # StyleTTS2 precisa de áudio limpo, então somos exigentes
         processamento_necessario = len(problemas) > 0 or score_geral < 0.75
 
         resultado = {
@@ -204,9 +203,9 @@ class AudioAnalyzer:
             "problemas": problemas,
             "score_geral": round(score_geral, 3),
             "scores_detalhados": {
-                "dnsmos_ovrl": mos_scores['ovrl'],
-                "dnsmos_bak": mos_scores['bak'],
-                "dnsmos_sig": mos_scores['sig'],
+                "ia_qualidade": mos_scores['ovrl'],
+                "ia_voz_limpa": mos_scores['sig'],
+                "ia_ausencia_ruido": mos_scores['bak'],
                 "clipping": clipping,
                 "silence": silence,
                 "ruido_heu": ruido_heu,
@@ -218,11 +217,28 @@ class AudioAnalyzer:
         return convert_numpy_types(resultado)
 
     def _imprimir_resultado(self, r: dict):
-        print(f"\n--- Análise: {Path(r['audio_path']).name} ---")
+        print(f"\n--- 📊 RELATÓRIO DE QUALIDADE: {Path(r['audio_path']).name} ---")
         print(f"Score Geral: {r['score_geral']:.1%}")
-        for p in r['problemas']: print(f"  ⚠️  {p}")
-        if r['processamento_necessario']: print("  ⚡ Processamento recomendado")
-        else: print("  ✅ Qualidade aceitável")
+        
+        if r['problemas']:
+            print("Defeitos encontrados:")
+            for p in r['problemas']:
+                print(f"  ❌ {p}")
+        else:
+            print("  ✅ Nível de estúdio detectado.")
+
+        print("Métricas detalhadas:")
+        sd = r['scores_detalhados']
+        print(f"  - Nota IA (MOS): {sd['ia_qualidade']*5:.1f}/5.0")
+        print(f"  - Chiado Agudo:  {sd['hissing_heu']:.1%}")
+        print(f"  - Ruído Const:   {sd['ruido_heu']:.1%}")
+        print(f"  - Saturação:     {sd['clipping']:.1%}")
+        
+        if r['processamento_necessario']:
+            print("  ⚡ AÇÃO: Processamento e restauração recomendados.")
+        else:
+            print("  ✅ AÇÃO: Preservando áudio original (alta fidelidade).")
+        print("-" * 50)
 
 # ============================================================
 # FUNÇÕES DE CACHE (Igual ao anterior)

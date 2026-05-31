@@ -79,6 +79,14 @@ def count_files(path: Path, allowed=None) -> int:
 # INSTALAÇÃO E PATCHES
 # ============================================================
 
+def clone_or_pull(url: str, dest: Path) -> None:
+    if dest.exists():
+        # Garantir que estamos em uma branch antes de dar pull
+        run(["git", "-C", str(dest), "checkout", "main"], check=False)
+        run(["git", "-C", str(dest), "pull", "--ff-only"], check=False)
+    else:
+        run(["git", "clone", url, str(dest)])
+
 def install_dependencies(style_dir: Path, env: str):
     print("\n--- Instalando Dependências ---")
     if env in ["colab", "kaggle"]:
@@ -87,10 +95,14 @@ def install_dependencies(style_dir: Path, env: str):
         # Desinstalar onnxruntime comum para evitar conflito com a versão GPU
         run([sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"], check=False)
 
+    # Configuração para instalação rápida do DeepSpeed sem compilação de C++ ops
+    os.environ["DS_BUILD_OPS"] = "0"
+    
     pkgs = [
         "torch", "torchaudio", "torchvision", "accelerate", "huggingface_hub", 
         "pyyaml", "librosa", "soundfile", "phonemizer", "openai-whisper", "demucs", 
-        "boto3", "onnxruntime-gpu", "omegaconf", "ptflops", "celluloid", "rich", "matplotlib"
+        "boto3", "onnxruntime-gpu", "omegaconf", "ptflops", "celluloid", "rich", 
+        "matplotlib", "deepspeed"
     ]
     run([sys.executable, "-m", "pip", "install", "-q"] + pkgs)
     
