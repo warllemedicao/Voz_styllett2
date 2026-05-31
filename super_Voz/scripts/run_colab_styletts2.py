@@ -114,6 +114,9 @@ def install_dependencies(style_dir: Path) -> None:
         run(["apt-get", "install", "-y", "ffmpeg", "sox", "libsndfile1", "espeak-ng"])
 
     print("[INFO] Verificando/Instalando dependências Python...")
+    # Desinstalar onnxruntime comum para evitar conflito com a versão GPU
+    run([sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"], check=False)
+    
     run([
         sys.executable,
         "-m",
@@ -132,6 +135,8 @@ def install_dependencies(style_dir: Path) -> None:
         "openai-whisper",
         "demucs",
         "boto3",
+        "resemble-enhance",
+        "onnxruntime-gpu"
     ])
 
     requirements = style_dir / "requirements.txt"
