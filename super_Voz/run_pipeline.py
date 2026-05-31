@@ -84,6 +84,8 @@ def install_dependencies(style_dir: Path, env: str):
     if env in ["colab", "kaggle"]:
         run(["apt-get", "update"], check=False)
         run(["apt-get", "install", "-y", "ffmpeg", "sox", "libsndfile1", "espeak-ng"], check=False)
+        # Desinstalar onnxruntime comum para evitar conflito com a versão GPU
+        run([sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"], check=False)
 
     pkgs = ["torch", "torchaudio", "torchvision", "accelerate", "huggingface_hub", "pyyaml", "librosa", "soundfile", "phonemizer", "openai-whisper", "demucs", "boto3", "resemble-enhance", "onnxruntime-gpu"]
     run([sys.executable, "-m", "pip", "install", "-q"] + pkgs)

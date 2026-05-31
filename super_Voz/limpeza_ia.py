@@ -62,13 +62,21 @@ class DNSMOS:
         try:
             import onnxruntime as ort
             providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            # Verificar se CUDA está realmente disponível para o ONNX
+            available_providers = ort.get_available_providers()
+            if 'CUDAExecutionProvider' not in available_providers:
+                print("[AVISO] CUDA não disponível para ONNX. Usando CPU (mais lento).")
+                providers = ['CPUExecutionProvider']
+            
             self.session = ort.InferenceSession(self.model_path, providers=providers)
         except Exception as e:
-            print(f"[AVISO] Falha ao carregar ONNX para DNSMOS: {e}")
+            print(f"[ERRO CRÍTICO] Falha ao carregar motor DNSMOS: {e}")
 
     def score(self, audio: np.ndarray, sr: int) -> dict:
         if self.session is None:
-            return {"ovrl": 0.5, "sig": 0.5, "bak": 0.5} # Fallback neutro
+            # Se falhou, retornamos score baixo para forçar a limpeza preventiva
+            return {"ovrl": 0.4, "sig": 0.4, "bak": 0.4} 
+
         
         try:
             # Resample para 16kHz (exigência do DNSMOS)
