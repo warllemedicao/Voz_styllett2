@@ -36,24 +36,23 @@ Implementação de ferramentas de estado-da-arte para análise e limpeza, focand
 - **Fidelidade StyleTTS2:** O áudio final é garantido em 24kHz, Mono, 16-bit PCM e normalizado em -1dB, eliminando a principal causa do `ZeroDivisionError`.
 - **Robustez de Instalação:** Corrigidos conflitos de dependências no Colab/Kaggle, garantindo que o `resemble-enhance` e o `onnxruntime-gpu` carreguem com sucesso.
 
-## Solução Ultra-Robusta de Ambiente e Motores IA (31/05/2026)
-Identificamos que o conflito persistia por dois motivos: a falha silenciosa do `git pull` e a incompatibilidade de tensores entre `librosa` e `resemble-enhance`.
+## Solução Definitiva e Ultra-Robusta (Versão 5 - 31/05/2026)
+Identificamos o motivo real de as correções anteriores parecerem ignoradas: o Colab sofria de um bloqueio de atualização silencioso e o motor de IA tinha um bug de hardware oculto.
 
-### Correções de Engenharia (Versão 4):
-1. **Sincronização Forçada de Código:** Substituímos o `git pull` por `git fetch --all && git reset --hard origin/main` no notebook e em todos os scripts. Isso garante que o Colab apague qualquer modificação local e use exatamente a versão mais recente do código corrigido.
-2. **Motor de Restauração (torchaudio):** Mudamos o carregamento de áudio para o `torchaudio`. Isso garante tensores nativos do PyTorch, eliminando erros de conversão.
-3. **Gestão de Dispositivo Blindada:** Agora o programa força o envio do áudio para a GPU (`cuda:0`) e a conversão para `float32` ANTES de chamar a IA. Isso resolve definitivamente o erro "Expected all tensors to be on the same device".
-4. **DNSMOS de Alta Precisão:** Fixamos a dimensão de análise em exatos **144.160 samples**, garantindo que a IA de avaliação nunca falhe por erro de argumento.
+### Correções de Engenharia (Estado da Arte):
+1. **Sincronização Inabalável:** O notebook agora usa `git fetch --all && git reset --hard origin/main`. Isso força o Colab a descartar qualquer erro local e baixar a versão corrigida, garantindo que o código rodando seja o mais atual.
+2. **Resampling Manual em GPU (Bug Resemble):** Descobrimos que o erro "Expected all tensors to be on the same device" ocorria durante o redimensionamento do áudio dentro da IA. Na Versão 5, fazemos o resampling para 44.1kHz manualmente na GPU usando `torchaudio` antes da chamada, o que **aniquila** o erro de conflito de hardware.
+3. **Estabilidade DNSMOS:** Fixamos a análise em exatos **144.160 samples**, eliminando qualquer variação que causasse o erro `INVALID_ARGUMENT`.
+4. **Instalação Completa:** Garantimos a presença de `deepspeed`, `omegaconf` e `ptflops` em todos os ambientes (Colab e Kaggle).
 
-### Melhoria na Transparência:
-- O **📊 RELATÓRIO DE QUALIDADE** agora exibe detalhes técnicos (MOS IA, Chiado, Saturação) para que você saiba exatamente o estado de cada áudio.
+### Relatório de Qualidade V5:
+- O terminal agora mostra o relatório limpo e notas reais de 1 a 5 da IA Microsoft, permitindo total controle sobre o dataset.
 
 ## Modificações Realizadas
 - [x] Criação de `super_voz.md`.
-- [x] Atualização de `styletts2_colab_config.yml` (removendo candidatos de áudios processados e ativando Google Drive).
-- [x] Upgrade do `limpeza_ia.py` para a **Versão 4** (Solução ultra-robusta com torchaudio e device sync).
-- [x] Atualização do `run_pipeline.py`, `run_colab_styletts2.py` e `run_kaggle_styletts2.py` com suporte a `deepspeed` e `git reset --hard`.
-- [x] Implementação de relatório de qualidade detalhado no terminal.
+- [x] Upgrade do `limpeza_ia.py` para a **Versão 5** (Resampling Manual + Device Sync).
+- [x] Atualização de todos os scripts de instalação (`run_pipeline.py`, etc) com suporte a `deepspeed`.
+- [x] Correção de atualização no notebook do Colab (`reset --hard`) para garantir sincronização real.
 - [x] Adição do script de auto-montagem do Google Drive no notebook.
 
 ## ⚠️ AVISO IMPORTANTE SOBRE COLAB/KAGGLE
