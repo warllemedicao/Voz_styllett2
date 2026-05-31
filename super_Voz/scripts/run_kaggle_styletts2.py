@@ -153,9 +153,11 @@ def install_dependencies(style_dir: Path) -> None:
         "phonemizer",
         "openai-whisper",
         "demucs",
-        "resemble-enhance",
         "onnxruntime-gpu",
     ])
+    
+    # Instalar resemble-enhance sem dependências para não forçar downgrade do PyTorch
+    run([sys.executable, "-m", "pip", "install", "-q", "--no-deps", "resemble-enhance"])
 
     requirements = style_dir / "requirements.txt"
     if requirements.exists():
