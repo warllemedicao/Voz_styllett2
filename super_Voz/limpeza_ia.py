@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ============================================================
-# limpeza_ia.py — LIMPEZA DE ÁUDIO COM ANÁLISE INTELIGENTE (V3)
-# Solução Definitiva para DNSMOS e Resemble Enhance
+# limpeza_ia.py — LIMPEZA DE ÁUDIO COM ANÁLISE INTELIGENTE (V4)
+# Solução de Ultra-Robustez para DNSMOS e Resemble Enhance
 # ============================================================
 
 import os
@@ -14,6 +14,7 @@ import sys
 import numpy as np
 import librosa
 import torch
+import torchaudio
 import warnings
 import soundfile as sf
 
@@ -92,7 +93,6 @@ class DNSMOS:
             inputs = {self.session.get_inputs()[0].name: audio_input}
             outputs = self.session.run(None, inputs)
             
-            # Normalizar para 0-1 (original é 1-5)
             return {
                 "sig": (outputs[0][0][0] - 1) / 4,
                 "bak": (outputs[0][0][1] - 1) / 4,
@@ -126,20 +126,27 @@ class AudioEnhancer:
 
         try:
             from resemble_enhance.enhancer.inference import enhance
-            # Carregar áudio
-            dwav, sr = librosa.load(str(input_path), sr=None)
             
-            # ATENÇÃO: Para evitar erro de device mismatch, 
-            # garantimos que o tensor está no device ANTES da chamada.
-            dwav = torch.from_numpy(dwav).to(self.device).to(torch.float32)
+            # Carregar usando torchaudio (mais compatível com o enhancer interno)
+            dwav, sr = torchaudio.load(str(input_path))
             
-            # Processar (Denoise + Enhance)
-            # nfe=32 é um bom equilíbrio velocidade/qualidade
-            hwav, sr = enhance(dwav, sr, device=self.device, nfe=32, solver="midpoint", lambd=0.5)
+            # Converter para mono se necessário e garantir float32
+            if dwav.shape[0] > 1:
+                dwav = dwav.mean(dim=0, keepdim=True)
             
-            # Converter de volta para numpy e salvar
+            # Garantir formato 1D (samples,) como o enhancer espera internamente em alguns casos
+            dwav = dwav.squeeze()
+            
+            # MOVER PARA O DEVICE CORRETO
+            dwav = dwav.to(self.device).to(torch.float32)
+            
+            # CHAMADA POSICIONAL (Mais segura para evitar conflitos de argumentos)
+            # hwav, sr = enhance(dwav, sr, device, nfe, solver, lambd, tau)
+            hwav, new_sr = enhance(dwav, sr, self.device, nfe=32, solver="midpoint", lambd=0.5)
+            
+            # Mover de volta para CPU e salvar
             audio_out = hwav.cpu().numpy()
-            sf.write(str(output_path), audio_out, sr)
+            sf.write(str(output_path), audio_out, new_sr)
             return True
         except Exception as e:
             print(f"  [ERRO] Falha no Resemble Enhance: {e}")
@@ -251,7 +258,7 @@ def gerar_chave_cache(audio_path: Path) -> str:
     return f"{audio_path.name}_{stat.st_size}_{stat.st_mtime}"
 
 def main():
-    parser = argparse.ArgumentParser(description="Limpeza de Áudio Avançada (V3)")
+    parser = argparse.ArgumentParser(description="Limpeza de Áudio Avançada (V4)")
     parser.add_argument("--input_dir", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
     parser.add_argument("--force", action="store_true")

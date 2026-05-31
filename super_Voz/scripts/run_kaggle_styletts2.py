@@ -18,9 +18,10 @@ def run(cmd, cwd=None, check=True):
 
 def clone_or_pull(url: str, dest: Path) -> None:
     if dest.exists():
-        # Garantir que estamos em uma branch antes de dar pull
+        # Garantir que estamos em uma branch antes de dar pull e resetar para evitar conflitos
+        run(["git", "-C", str(dest), "fetch", "--all"], check=False)
         run(["git", "-C", str(dest), "checkout", "main"], check=False)
-        run(["git", "-C", str(dest), "pull", "--ff-only"], check=False)
+        run(["git", "-C", str(dest), "reset", "--hard", "origin/main"], check=False)
     else:
         run(["git", "clone", url, str(dest)])
 
@@ -138,6 +139,9 @@ def install_dependencies(style_dir: Path) -> None:
     # Desinstalar onnxruntime comum para evitar conflito com a versão GPU
     run([sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"], check=False)
     
+    # Configuração para instalação rápida do DeepSpeed sem compilação de C++ ops
+    os.environ["DS_BUILD_OPS"] = "0"
+
     run([
         sys.executable,
         "-m",
@@ -160,7 +164,8 @@ def install_dependencies(style_dir: Path) -> None:
         "ptflops",
         "celluloid",
         "rich",
-        "matplotlib"
+        "matplotlib",
+        "deepspeed"
     ])
     
     # Instalar resemble-enhance sem dependências para não forçar downgrade do PyTorch
@@ -203,6 +208,7 @@ def download_from_r2(s3, bucket, prefix, local_dir: Path):
                 if key.endswith("/"):
                     continue
                 
+                # Resolve caminho local relativo ao prefixo
                 rel_path = os.path.relpath(key, prefix)
                 dst_path = local_dir / rel_path
                 dst_path.parent.mkdir(parents=True, exist_ok=True)
