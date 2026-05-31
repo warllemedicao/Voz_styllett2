@@ -3,7 +3,7 @@ repo_dir: "/content/Super_voz"
 project_subdir: "super_Voz"
 
 styletts2_repo: "https://github.com/yl4579/StyleTTS2.git"
-styletts2_dir: "/content/StyleTTS2"
+styletts2_dir: "/content/drive/MyDrive/StyleTTS2"
 
 # Configuração do Cloudflare R2 (S3-compatible)
 cloudflare_r2:
