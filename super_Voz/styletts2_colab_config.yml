@@ -18,9 +18,6 @@ cloudflare_r2:
 raw_audio_candidates:
   - "Audios_brutos"
 
-processed_audio_candidates:
-  - "Audios_processados"
-
 speaker: "0"
 sample_rate: 24000
 val_ratio: 0.05
