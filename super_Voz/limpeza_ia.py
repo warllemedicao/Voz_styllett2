@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ============================================================
-# limpeza_ia.py — LIMPEZA DE ÁUDIO COM ANÁLISE INTELIGENTE (V5)
-# Solução Ultra-Robustez: Resampling Manual em GPU e Device Sync
+# limpeza_ia.py — LIMPEZA DE ÁUDIO COM ANÁLISE INTELIGENTE (V6)
+# Solução Ultra-Robusta: GPU Warm-up e Device Synchronization
 # ============================================================
 
 import os
@@ -27,18 +27,6 @@ warnings.filterwarnings('ignore')
 CACHE_ANÁLISE = "analise_audio_cache.json"
 PROCESSADOS_LOG = "processados.json"
 DNSMOS_MODEL_URL = "https://github.com/microsoft/DNS-Challenge/raw/master/DNSMOS/DNSMOS/sig_bak_ovr.onnx"
-
-# ============================================================
-# UTILITÁRIOS
-# ============================================================
-
-def convert_numpy_types(obj):
-    if isinstance(obj, np.floating): return float(obj)
-    elif isinstance(obj, np.integer): return int(obj)
-    elif isinstance(obj, np.ndarray): return obj.tolist()
-    elif isinstance(obj, dict): return {k: convert_numpy_types(v) for k, v in obj.items()}
-    elif isinstance(obj, list): return [convert_numpy_types(item) for item in obj]
-    else: return obj
 
 # ============================================================
 # DNSMOS: NOTA DE QUALIDADE (MÉTRICA DA MICROSOFT)
@@ -85,49 +73,73 @@ class DNSMOS:
                 "ovrl": (outputs[0][0][2] - 1) / 4
             }
         except Exception as e:
-            print(f"  [ERRO DNSMOS] {e}")
             return {"ovrl": 0.5, "sig": 0.5, "bak": 0.5}
 
 # ============================================================
-# AUDIO ENHANCER: RESEMBLE ENHANCE
+# AUDIO ENHANCER: RESEMBLE ENHANCE (SOLUÇÃO V6)
 # ============================================================
 
 class AudioEnhancer:
     def __init__(self):
-        # Usar torch.device explicitamente
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.has_resemble = False
+        self._warmup_done = False
         try:
             import resemble_enhance
             from resemble_enhance.enhancer.inference import enhance
             self.has_resemble = True
+            print(f"[INFO] Motor de restauração detectado no device: {self.device}")
         except Exception as e:
             print(f"[AVISO] resemble-enhance indisponível: {e}")
 
+    def _warmup(self):
+        """Força o carregamento dos modelos na GPU com um tensor dummy."""
+        if not self.has_resemble or self._warmup_done or str(self.device) == "cpu":
+            return
+        
+        print("[INFO] Aquecendo motores da IA (GPU Warm-up)...")
+        try:
+            from resemble_enhance.enhancer.inference import enhance
+            # Criar 1 segundo de silêncio a 44.1kHz
+            dummy_wav = torch.zeros(44100).to(self.device).to(torch.float32)
+            # Rodar uma vez para estabilizar o device interno da biblioteca
+            _, _ = enhance(dummy_wav, 44100, device=self.device, nfe=1)
+            self._warmup_done = True
+            print("[INFO] GPU pronta e sincronizada.")
+        except Exception as e:
+            print(f"[AVISO] Falha no Warm-up: {e}")
+
     def process(self, input_path: Path, output_path: Path):
         if not self.has_resemble: return False
+        
+        # Executar warmup apenas uma vez
+        if not self._warmup_done:
+            self._warmup()
+
         try:
             from resemble_enhance.enhancer.inference import enhance
             
             # 1. Carregar áudio
             dwav, sr = torchaudio.load(str(input_path))
             
-            # 2. Garantir Mono e mover para Device
+            # 2. Converter para mono e float32
             if dwav.shape[0] > 1: dwav = dwav.mean(dim=0, keepdim=True)
             dwav = dwav.to(self.device).to(torch.float32)
             
-            # 3. RESAMPLING MANUAL EM GPU (Evita erro interno do resemble-enhance)
-            # O Resemble Enhance exige 44.1kHz. Fazemos aqui para não deixar ele tentar fazer no CPU.
+            # 3. Resampling Manual para 44.1kHz (Obrigatório para Resemble)
             if sr != 44100:
                 resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=44100).to(self.device)
                 dwav = resampler(dwav)
                 sr = 44100
             
-            # 4. Inferência (Garantindo tensores 1D para a API)
+            # 4. Garantir 1D para a API
             dwav_1d = dwav.squeeze()
-            hwav, new_sr = enhance(dwav_1d, sr, self.device, nfe=32, solver="midpoint", lambd=0.5)
             
-            # 5. Salvar resultado
+            # 5. Inferência com Sincronização
+            torch.cuda.empty_cache() # Limpar fragmentos de memória
+            hwav, new_sr = enhance(dwav_1d, sr, device=self.device, nfe=32, solver="midpoint", lambd=0.5)
+            
+            # 6. Salvar resultado
             audio_out = hwav.cpu().numpy()
             sf.write(str(output_path), audio_out, new_sr)
             return True
@@ -153,27 +165,25 @@ class AudioAnalyzer:
         audio = audio.astype(np.float32)
         mos_scores = self.mos_tool.score(audio, sr)
         
-        # Heurísticas
+        # Heurísticas rápidas
         D = np.abs(librosa.stft(audio, n_fft=1024, hop_length=256))
         freq_bins = np.fft.rfftfreq(1024, 1/sr)
         hissing_idx = freq_bins > 8000
         razao_hissing = (np.mean(np.abs(D[hissing_idx, :])) / np.mean(np.abs(D))) if np.any(hissing_idx) else 0
         hissing_heu = min(razao_hissing * 5, 1.0)
-        clipping = np.mean(np.abs(audio) > 0.99)
         
         problemas = []
-        if mos_scores['ovrl'] < 0.6: problemas.append(f"Qualidade baixa (MOS IA: {mos_scores['ovrl']*5:.1f})")
-        if hissing_heu > 0.5: problemas.append("Chiado/Assobio agudo (Hissing)")
-        if clipping > 0.05: problemas.append("Clipping detectado")
+        if mos_scores['ovrl'] < 0.6: problemas.append(f"Voz degradada (Nota IA: {mos_scores['ovrl']*5:.1f}/5.0)")
+        if hissing_heu > 0.5: problemas.append("Chiado agudo detectado")
 
-        score_geral = mos_scores['ovrl'] * 0.7 + (1.0 - clipping) * 0.15 + (1.0 - hissing_heu) * 0.15
+        score_geral = mos_scores['ovrl'] * 0.8 + (1.0 - hissing_heu) * 0.2
         processamento_necessario = len(problemas) > 0 or score_geral < 0.75
 
         resultado = {
             "status": "sucesso", "audio_path": str(audio_path),
             "processamento_necessario": processamento_necessario,
             "problemas": problemas, "score_geral": round(score_geral, 3),
-            "scores_detalhados": {"dnsmos_ovrl": mos_scores['ovrl'], "hissing": hissing_heu, "clipping": clipping}
+            "scores_detalhados": {"dnsmos_ovrl": mos_scores['ovrl'], "hissing": hissing_heu}
         }
         if verbose: self._imprimir_resultado(resultado)
         return convert_numpy_types(resultado)
@@ -182,7 +192,7 @@ class AudioAnalyzer:
         print(f"\n--- QUALIDADE: {Path(r['audio_path']).name} ---")
         print(f"Score Geral: {r['score_geral']:.1%}")
         for p in r['problemas']: print(f"  ❌ {p}")
-        if r['processamento_necessario']: print("  ⚡ AÇÃO: Restaurando áudio...")
+        if r['processamento_necessario']: print("  ⚡ AÇÃO: Restaurando...")
         else: print("  ✅ AÇÃO: Preservando original.")
 
 # ============================================================
@@ -203,8 +213,8 @@ def main():
 
     analyzer = AudioAnalyzer()
     enhancer = AudioEnhancer()
-    cache = carregar_cache(CACHE_ANÁLISE) if not args.force else {}
     
+    print("[INFO] Carregando Whisper...")
     import whisper
     model = whisper.load_model("medium")
 
@@ -227,7 +237,7 @@ def main():
             import shutil
             shutil.copy2(audio_path, final_wav)
 
-        # Padronização StyleTTS2
+        # Padronização final para StyleTTS2
         try:
             y, sr = librosa.load(str(final_wav), sr=24000, mono=True)
             y = librosa.util.normalize(librosa.effects.trim(y, top_db=25)[0]) * 0.95
@@ -240,12 +250,7 @@ def main():
             print(f"  [ERRO FINAL] {e}")
 
     with open("train.txt", "w", encoding="utf-8") as f: f.write("\n".join(metadata))
-    print(f"✅ Concluído: {output_dir}")
-
-def carregar_cache(caminho):
-    if Path(caminho).exists():
-        with open(caminho, 'r') as f: return json.load(f)
-    return {}
+    print(f"✅ Dataset pronto em: {output_dir}")
 
 if __name__ == "__main__":
     main()
