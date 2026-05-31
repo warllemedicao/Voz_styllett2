@@ -121,7 +121,7 @@ def install_dependencies(style_dir: Path) -> None:
     
     # Configuração para instalação rápida do DeepSpeed sem compilação de C++ ops
     os.environ["DS_BUILD_OPS"] = "0"
-    
+
     run([
         sys.executable,
         "-m",
