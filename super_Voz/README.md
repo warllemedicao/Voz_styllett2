@@ -9,8 +9,8 @@ O projeto usa o **Cloudflare R2** (S3-compatible) para armazenamento persistente
 1. **Acesso a Dados:**
    - O pipeline baixa automaticamente os áudios do bucket R2 configurado em `styletts2_colab_config.yml` ou `styletts2_kaggle_config.yml`.
 2. **Ambiente:** Clona/atualiza este repositório do GitHub.
-3. **Dados:** Sincroniza `Audios_brutos` e/ou `Audios_processados` do bucket.
-4. **Limpeza:** Se necessário, usa `limpeza_ia.py` (Demucs + Whisper) para limpar e transcrever.
+3. **Dados:** Sincroniza `Audios_brutos` do bucket.
+4. **Limpeza OBRIGATÓRIA:** Usa `limpeza_ia.py` (Demucs + Whisper + Otimizações) para garantir o formato correto para StyleTTS2 (24kHz, Trim de silêncio, 16-bit).
 5. **Conversão:** Converte o dataset para o formato do StyleTTS2 (`wav|texto|speaker`).
 6. StyleTTS2: Clona o StyleTTS2 oficial e aplica patches de compatibilidade.
 7. Treino: Executa fine-tuning com `accelerate launch`.
@@ -18,7 +18,7 @@ O projeto usa o **Cloudflare R2** (S3-compatible) para armazenamento persistente
 
 ## Configuração do Bucket (Cloudflare R2) - APENAS ENTRADA
 
-Para usar este projeto, você deve configurar o Cloudflare R2 apenas para baixar os áudios. A sincronização de saída foi desativada para economizar egress e permitir controle manual dos arquivos.
+Para usar este projeto, você deve configurar o Cloudflare R2 para baixar os áudios brutos.
 
 ```yaml
 cloudflare_r2:
@@ -26,25 +26,23 @@ cloudflare_r2:
   access_key_id: "SUA_ACCESS_KEY"
   secret_access_key: "SUA_SECRET_KEY"
   bucket_name: "NOME_DO_BUCKET"
+  raw_audio_prefix: "Audios_brutos/"
 ```
 
 ### Estrutura do Bucket:
 - `Audios_brutos/`: Coloque aqui seus áudios originais para processamento.
-- `Audios_processados/`: (Opcional) Dataset já processado (WAVs + `train.txt`).
 
-**Nota:** A pasta `super_Voz_outputs/` não será mais alimentada automaticamente pelo pipeline.
+**Nota:** A sincronização de áudios já processados foi desativada para garantir que a `limpeza_ia.py` sempre aplique os tratamentos de áudio necessários para evitar erros de validação no StyleTTS2.
 
 ## Estrutura de Pastas Recomendada
 
 ```text
 super_Voz/
   Audios_brutos/       # Áudios originais (mp3, wav, etc)
-  Audios_processados/  # Áudios limpos + train.txt (gerado automaticamente)
+  Audios_processados/  # Áudios limpos + train.txt (gerado automaticamente via limpeza_ia.py)
   checkpoints/         # Checkpoints salvos durante o treino
   outputs/             # Logs e outros artefatos
 ```
-
-Se `Audios_processados/train.txt` já existir, a etapa de limpeza/transcrição é pulada.
 
 ## Como rodar no Kaggle
 

@@ -500,10 +500,13 @@ def main():
         else:
             processamento_necessario = True
 
+        # =========================================================
+        # PROCESSAR COM DEMUCS
+        # =========================================================
         if not processamento_necessario and not args.force:
-            # Usar áudio original
-            vocal_path = audio_path
-            print(f"  ⏭️  Pulando processamento para {audio_path.name}")
+            # Usar áudio original (mas ainda precisamos converter formato)
+            raw_vocal_path = audio_path
+            print(f"  ⏭️  Pulando Demucs para {audio_path.name}")
         else:
             # Processar com Demucs
             print("  ⚙️  Rodando Demucs (separação de voz)...")
@@ -519,24 +522,42 @@ def main():
                 print(f"  ⚠️  Demucs retornou código {result.returncode}")
 
             # O Demucs salva em: demucs_temp/htdemucs/{nome_do_arquivo}/vocals.wav
-            vocal_path = demucs_out / "htdemucs" / audio_path.stem / "vocals.wav"
+            raw_vocal_path = demucs_out / "htdemucs" / audio_path.stem / "vocals.wav"
 
-            if not vocal_path.exists():
+            if not raw_vocal_path.exists():
                 print(f"  [ERRO] Falha ao extrair voz. Usando original...")
-                vocal_path = audio_path
+                raw_vocal_path = audio_path
 
         # =========================================================
-        # SALVAR ÁUDIO LIMPO
+        # PÓS-PROCESSAMENTO PARA STYLETTS2 (TRIM, NORM, RESAMPLE)
         # =========================================================
+        print("  🧹 Otimizando áudio para StyleTTS2 (Trim, Norm, 24kHz)...")
         file_id = f"voz_{idx:04d}_{audio_path.stem.replace(' ', '_')}"
         final_wav_path = dataset_wavs / f"{file_id}.wav"
 
-        import shutil
         try:
-            shutil.copy2(vocal_path, final_wav_path)
-            print(f"  ✅ Áudio salvo: {final_wav_path.name}")
+            # Carregar áudio (resample para 24kHz que é o padrão StyleTTS2)
+            y, sr = librosa.load(str(raw_vocal_path), sr=24000)
+            
+            # 1. Trim agressivo de silêncio (top_db=20 é bem sensível)
+            y_trimmed, _ = librosa.effects.trim(y, top_db=20)
+            
+            # 2. Normalização de volume (-1.0 a 1.0)
+            if np.max(np.abs(y_trimmed)) > 0:
+                y_norm = librosa.util.normalize(y_trimmed)
+            else:
+                y_norm = y_trimmed
+
+            # 3. Salvar como 16-bit PCM (requerido pelo StyleTTS2)
+            import soundfile as sf
+            sf.write(str(final_wav_path), y_norm, 24000, subtype='PCM_16')
+            
+            print(f"  ✅ Áudio otimizado: {final_wav_path.name}")
         except Exception as e:
-            print(f"  [ERRO] Falha ao salvar áudio: {e}")
+            print(f"  [ERRO] Falha ao otimizar áudio: {e}")
+            # Fallback copy if processing fails
+            import shutil
+            shutil.copy2(raw_vocal_path, final_wav_path)
             continue
 
         # =========================================================

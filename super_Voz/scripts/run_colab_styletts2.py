@@ -259,72 +259,52 @@ def prepare_local_audio(project_dir: Path, cfg: dict) -> tuple[Path, bool]:
     local_processed.mkdir(parents=True, exist_ok=True)
 
     s3, bucket = get_r2_client(cfg)
-    imported_processed = False
 
+    # SEMPRE buscamos Audios Brutos agora para garantir que limpeza_ia.py rode com as novas otimizações
     if s3:
         r2_cfg = cfg.get("cloudflare_r2", {})
-        # Tenta baixar processados primeiro
-        proc_prefix = r2_cfg.get("processed_audio_prefix")
-        if proc_prefix:
-            downloaded = download_from_r2(s3, bucket, proc_prefix, local_processed)
-            imported_processed = downloaded > 0 and (local_processed / "train.txt").exists()
-            if imported_processed:
-                print(f"✅ Processados importados do R2: {downloaded}")
-
-        # Se não baixou processados, baixa brutos
-        if not imported_processed:
-            raw_prefix = r2_cfg.get("raw_audio_prefix")
-            if raw_prefix:
-                downloaded = download_from_r2(s3, bucket, raw_prefix, local_raw)
-                print(f"✅ Audios brutos importados do R2: {downloaded}")
+        raw_prefix = r2_cfg.get("raw_audio_prefix")
+        if raw_prefix:
+            downloaded = download_from_r2(s3, bucket, raw_prefix, local_raw)
+            print(f"✅ Audios brutos importados do R2: {downloaded}")
     else:
         print("[AVISO] Configuração R2 incompleta ou ausente. Verificando candidatos locais/Drive...")
         raw_candidates = cfg.get("raw_audio_candidates", [])
-        processed_candidates = cfg.get("processed_audio_candidates", [])
-
         raw_drive = first_existing(raw_candidates)
-        processed_drive = first_existing(processed_candidates)
 
-        if processed_drive:
-            copied = copy_tree_files(
-                processed_drive,
-                local_processed,
-                allowed=lambda p: p.suffix.lower() == ".wav" or p.name in {"train.txt", "metadata.csv"},
-            )
-            imported_processed = copied > 0 and (local_processed / "train.txt").exists()
-            print(f"Processados importados: {copied}")
-
-        if raw_drive and not imported_processed:
+        if raw_drive:
             copied = copy_tree_files(raw_drive, local_raw, allowed=lambda p: p.suffix.lower() in AUDIO_EXTS)
             print(f"Audios brutos importados: {copied}")
 
-    if not imported_processed:
-        if not any(local_raw.rglob("*")):
-            error_msg = (
-                "\n" + "!" * 60 + "\n"
-                " [ERRO] NENHUM ÁUDIO ENCONTRADO\n"
-                "!" * 60 + "\n"
-                "Verifique se você configurou o Cloudflare R2 corretamente ou se os arquivos estão na pasta 'Audios_brutos'.\n"
-                "!" * 60
-            )
-            raise FileNotFoundError(error_msg)
+    # SEMPRE rodamos a limpeza agora
+    if not any(local_raw.rglob("*")):
+        error_msg = (
+            "\n" + "!" * 60 + "\n"
+            " [ERRO] NENHUM ÁUDIO BRUTO ENCONTRADO\n"
+            "!" * 60 + "\n"
+            "Verifique se você configurou o Cloudflare R2 corretamente ou se os arquivos estão na pasta 'Audios_brutos'.\n"
+            "!" * 60
+        )
+        raise FileNotFoundError(error_msg)
 
-        run([
-            sys.executable,
-            "limpeza_ia.py",
-            "--input_dir",
-            str(local_raw),
-            "--output_dir",
-            str(local_processed),
-            "--ambiente",
-            "colab",
-        ], cwd=project_dir)
+    print("\n[INFO] Iniciando Limpeza IA (necessário para garantir formato StyleTTS2)...")
+    run([
+        sys.executable,
+        "limpeza_ia.py",
+        "--input_dir",
+        str(local_raw),
+        "--output_dir",
+        str(local_processed),
+        "--ambiente",
+        "colab",
+        "--force", # Forçamos para garantir que ignore cache de limpeza anterior
+    ], cwd=project_dir)
 
     train_txt = local_processed / "train.txt"
     if not train_txt.exists() or not train_txt.read_text(encoding="utf-8").strip():
         raise RuntimeError(f"train.txt nao encontrado ou vazio: {train_txt}")
 
-    return local_processed, imported_processed
+    return local_processed, False # Retornamos False para 'imported_processed' para indicar que foi gerado agora
 
 
 def sync_outputs(style_dir: Path, dataset_dir: Path, cfg: dict) -> None:
@@ -390,7 +370,7 @@ def patch_styletts2_oom_safety(style_dir: Path) -> None:
         print("[AVISO] train_finetune_accelerate.py não encontrado para patch OOM.")
         return
 
-    print("[INFO] Aplicando patch anti-OOM em train_finetune_accelerate.py...")
+    print("[INFO] Aplicando patch anti-OOM in train_finetune_accelerate.py...")
     content = train_py.read_text(encoding="utf-8")
     original = content
 
@@ -409,6 +389,34 @@ def patch_styletts2_oom_safety(style_dir: Path) -> None:
         print("✅ Patch anti-OOM aplicado: validação/referência agora respeitam max_len.")
     else:
         print("ℹ️ Patch anti-OOM já estava aplicado ou o script mudou de formato.")
+
+
+def patch_styletts2_zero_division_safety(style_dir: Path) -> None:
+    """Aplica patch para evitar ZeroDivisionError se o validation dataloader for vazio."""
+    train_py = style_dir / "train_finetune_accelerate.py"
+    if not train_py.exists():
+        return
+
+    print("[INFO] Aplicando patch contra ZeroDivisionError em train_finetune_accelerate.py...")
+    content = train_py.read_text(encoding="utf-8")
+    original = content
+
+    # Garante que iters_test seja pelo menos 1 antes da divisão
+    old_log = "logger.info('Validation loss:"
+    new_log = "iters_test = max(1, iters_test)\n        logger.info('Validation loss:"
+    
+    if old_log in content and new_log not in content:
+        content = content.replace(old_log, new_log)
+        # Também corrigir divisões subsequentes no tensorboard
+        content = content.replace("loss_test / iters_test", "loss_test / max(1, iters_test)")
+        content = content.replace("loss_align / iters_test", "loss_align / max(1, iters_test)")
+        content = content.replace("loss_f / iters_test", "loss_f / max(1, iters_test)")
+
+    if content != original:
+        train_py.write_text(content, encoding="utf-8")
+        print("✅ Patch contra ZeroDivisionError aplicado.")
+    else:
+        print("ℹ️ Patch contra ZeroDivisionError já aplicado ou não necessário.")
 
 
 def verify_gpu() -> bool:
@@ -457,6 +465,7 @@ def main() -> int:
     # APLICA PATCHES LOGO APÓS CLONAR/ATUALIZAR O STYLETTS2.
     patch_pytorch_compatibility(style_dir)
     patch_styletts2_oom_safety(style_dir)
+    patch_styletts2_zero_division_safety(style_dir)
 
     install_dependencies(style_dir)
 

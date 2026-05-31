@@ -107,6 +107,16 @@ def patch_styletts2(style_dir: Path):
     if train_py.exists():
         content = train_py.read_text(encoding="utf-8")
         new_content = content.replace("mel_len_st = int(mel_input_length.min().item() / 2 - 1)", "mel_len_st = min(int(mel_input_length.min().item() / 2 - 1), max_len // 2)")
+        
+        # Patch ZeroDivisionError
+        old_log = "logger.info('Validation loss:"
+        if old_log in new_content and "max(1, iters_test)" not in new_content:
+            new_content = new_content.replace(old_log, "iters_test = max(1, iters_test)\n        logger.info('Validation loss:")
+            new_content = new_content.replace("loss_test / iters_test", "loss_test / max(1, iters_test)")
+            new_content = new_content.replace("loss_align / iters_test", "loss_align / max(1, iters_test)")
+            new_content = new_content.replace("loss_f / iters_test", "loss_f / max(1, iters_test)")
+            print("✅ Patch contra ZeroDivisionError aplicado.")
+
         if content != new_content:
             train_py.write_text(new_content, encoding="utf-8")
             print("✅ Patch Anti-OOM aplicado.")
@@ -163,41 +173,29 @@ def prepare_data(project_dir: Path, cfg: dict, env: str):
     local_processed.mkdir(parents=True, exist_ok=True)
 
     s3, bucket = get_r2_client(cfg)
-    imported = False
 
     if s3:
         r2_cfg = cfg.get("cloudflare_r2", {})
-        proc_prefix = r2_cfg.get("processed_audio_prefix")
-        if proc_prefix:
-            downloaded = download_from_r2(s3, bucket, proc_prefix, local_processed)
-            imported = downloaded > 0 and (local_processed / "train.txt").exists()
-            if imported: print(f"✅ Processados importados do R2: {downloaded}")
-        
-        if not imported:
-            raw_prefix = r2_cfg.get("raw_audio_prefix")
-            if raw_prefix:
-                downloaded = download_from_r2(s3, bucket, raw_prefix, local_raw)
-                print(f"✅ Brutos importados do R2: {downloaded}")
+        raw_prefix = r2_cfg.get("raw_audio_prefix")
+        if raw_prefix:
+            downloaded = download_from_r2(s3, bucket, raw_prefix, local_raw)
+            print(f"✅ Brutos importados do R2: {downloaded}")
     else:
         print("[AVISO] R2 não configurado. Verificando candidatos locais...")
         raw_drive = first_existing(cfg.get("raw_audio_candidates", []))
-        processed_drive = first_existing(cfg.get("processed_audio_candidates", []))
-        if processed_drive:
-            copied = copy_tree_files(processed_drive, local_processed, allowed=lambda p: p.suffix.lower() == ".wav" or p.name in {"train.txt", "metadata.csv"})
-            imported = copied > 0 and (local_processed / "train.txt").exists()
-            if imported: print(f"✅ Processados encontrados: {copied}")
-        if raw_drive and not imported:
+        if raw_drive:
             copied = copy_tree_files(raw_drive, local_raw, allowed=lambda p: p.suffix.lower() in AUDIO_EXTS)
             if copied > 0: print(f"✅ Brutos encontrados: {copied}")
 
-    if not imported and not any(local_raw.rglob("*")):
-        print("❌ NENHUM ÁUDIO ENCONTRADO!")
+    if not any(local_raw.rglob("*")):
+        print("❌ NENHUM ÁUDIO BRUTO ENCONTRADO!")
         return None, False
 
-    if not imported:
-        run([sys.executable, "limpeza_ia.py", "--input_dir", str(local_raw), "--output_dir", str(local_processed), "--ambiente", env], cwd=project_dir)
+    # SEMPRE rodamos a limpeza IA agora para garantir formato StyleTTS2
+    print("\n[INFO] Iniciando Limpeza IA (necessário para garantir formato StyleTTS2)...")
+    run([sys.executable, "limpeza_ia.py", "--input_dir", str(local_raw), "--output_dir", str(local_processed), "--ambiente", env, "--force"], cwd=project_dir)
     
-    return local_processed, imported
+    return local_processed, False # Retornamos False para indicar que foi gerado agora
 
 def sync_outputs(style_dir: Path, dataset_dir: Path, cfg: dict):
     print(f"--- Fim do Processamento ---")

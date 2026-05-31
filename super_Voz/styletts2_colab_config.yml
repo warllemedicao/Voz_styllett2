@@ -12,11 +12,14 @@ cloudflare_r2:
   secret_access_key: "ed3f7dd6dcdec6041fd603a1bb57e67775f3f0ed92752a9b295f002f113241c2"
   bucket_name: "super-voz"
   raw_audio_prefix: "super_voz/Audios_Brutos/"
-  processed_audio_prefix: "super_voz/Audios_processados/"
+  # processed_audio_prefix: "super_voz/Audios_processados/" # REMOVIDO PARA FORÇAR LIMPEZA IA COMPLETA
   output_prefix: "super_voz/super_Voz_outputs/"
 
 raw_audio_candidates:
   - "Audios_brutos"
+
+# processed_audio_candidates: # DESATIVADO PARA GARANTIR QUE limpeza_ia.py RODE SEMPRE
+#   - "Audios_processados"
 
 speaker: "0"
 sample_rate: 24000

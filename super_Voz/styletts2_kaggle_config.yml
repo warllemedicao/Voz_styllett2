@@ -14,7 +14,7 @@ cloudflare_r2:
   secret_access_key: "ed3f7dd6dcdec6041fd603a1bb57e67775f3f0ed92752a9b295f002f113241c2"
   bucket_name: "super-voz"
   raw_audio_prefix: "super_voz/Audios_Brutos/"
-  processed_audio_prefix: "super_voz/Audios_processados/"
+  # processed_audio_prefix: "super_voz/Audios_processados/" # REMOVIDO PARA FORÇAR LIMPEZA IA
   output_prefix: "super_voz/super_Voz_outputs/"
 
 # Caminhos locais no Kaggle (onde os dados serão colocados após download do R2)
@@ -23,9 +23,9 @@ raw_audio_candidates:
   - "/kaggle/input/super-voz/Audios_brutos"
   - "/kaggle/input/super-voz/Audios_Brutos"
 
-processed_audio_candidates:
-  - "Audios_processados"
-  - "/kaggle/input/super-voz/Audios_processados"
+# processed_audio_candidates: # DESATIVADO PARA GARANTIR LIMPEZA COMPLETA
+#   - "Audios_processados"
+#   - "/kaggle/input/super-voz/Audios_processados"
 
 speaker: "0"
 sample_rate: 24000

@@ -317,6 +317,34 @@ def patch_styletts2_oom_safety(style_dir: Path) -> None:
         print("✅ Patch anti-OOM aplicado.")
 
 
+def patch_styletts2_zero_division_safety(style_dir: Path) -> None:
+    """Aplica patch para evitar ZeroDivisionError se o validation dataloader for vazio."""
+    train_py = style_dir / "train_finetune_accelerate.py"
+    if not train_py.exists():
+        return
+
+    print("[INFO] Aplicando patch contra ZeroDivisionError em train_finetune_accelerate.py...")
+    content = train_py.read_text(encoding="utf-8")
+    original = content
+
+    # Garante que iters_test seja pelo menos 1 antes da divisão
+    old_log = "logger.info('Validation loss:"
+    new_log = "iters_test = max(1, iters_test)\n        logger.info('Validation loss:"
+    
+    if old_log in content and new_log not in content:
+        content = content.replace(old_log, new_log)
+        # Também corrigir divisões subsequentes no tensorboard
+        content = content.replace("loss_test / iters_test", "loss_test / max(1, iters_test)")
+        content = content.replace("loss_align / iters_test", "loss_align / max(1, iters_test)")
+        content = content.replace("loss_f / iters_test", "loss_f / max(1, iters_test)")
+
+    if content != original:
+        train_py.write_text(content, encoding="utf-8")
+        print("✅ Patch contra ZeroDivisionError aplicado.")
+    else:
+        print("ℹ️ Patch contra ZeroDivisionError já aplicado ou não necessário.")
+
+
 def sync_outputs(style_dir: Path, dataset_dir: Path, cfg: dict) -> None:
     print("\n" + "="*60)
     print(" ✅ TREINO FINALIZADO!")
@@ -361,6 +389,7 @@ def main() -> int:
 
     patch_pytorch_compatibility(style_dir)
     patch_styletts2_oom_safety(style_dir)
+    patch_styletts2_zero_division_safety(style_dir)
 
     install_dependencies(style_dir)
     
@@ -371,52 +400,36 @@ def main() -> int:
     local_processed.mkdir(parents=True, exist_ok=True)
 
     s3, bucket = get_r2_client(cfg)
-    imported_processed = False
 
+    # SEMPRE buscamos Audios Brutos agora para garantir que limpeza_ia.py rode com as novas otimizações
     if s3:
         r2_cfg = cfg.get("cloudflare_r2", {})
-        # Tenta baixar processados primeiro
-        proc_prefix = r2_cfg.get("processed_audio_prefix")
-        if proc_prefix:
-            downloaded = download_from_r2(s3, bucket, proc_prefix, local_processed)
-            imported_processed = downloaded > 0 and (local_processed / "train.txt").exists()
-            if imported_processed:
-                print(f"✅ Processados importados do R2: {downloaded}")
-
-        # Se não baixou processados, baixa brutos
-        if not imported_processed:
-            raw_prefix = r2_cfg.get("raw_audio_prefix")
-            if raw_prefix:
-                downloaded = download_from_r2(s3, bucket, raw_prefix, local_raw)
-                print(f"✅ Audios brutos importados do R2: {downloaded}")
+        raw_prefix = r2_cfg.get("raw_audio_prefix")
+        if raw_prefix:
+            downloaded = download_from_r2(s3, bucket, raw_prefix, local_raw)
+            print(f"✅ Audios brutos importados do R2: {downloaded}")
     else:
         print("[AVISO] Configuração R2 ausente ou incompleta. Verificando candidatos locais/Kaggle Input...")
         raw_candidates = cfg.get("raw_audio_candidates", [])
-        processed_candidates = cfg.get("processed_audio_candidates", [])
-
         raw_drive = first_existing(raw_candidates)
-        processed_drive = first_existing(processed_candidates)
 
-        if processed_drive:
-            copied = copy_tree_files(processed_drive, local_processed)
-            imported_processed = copied > 0 and (local_processed / "train.txt").exists()
-            print(f"Processados encontrados: {copied}")
-
-        if raw_drive and not imported_processed:
+        if raw_drive:
             copy_tree_files(raw_drive, local_raw)
+            print(f"Audios brutos copiados.")
 
-    if not imported_processed:
-        if not any(local_raw.rglob("*")):
-             print("❌ NENHUM ÁUDIO ENCONTRADO! Verifique os caminhos R2 ou Kaggle Input.")
-             return 1
+    if not any(local_raw.rglob("*")):
+         print("❌ NENHUM ÁUDIO BRUTO ENCONTRADO! Verifique os caminhos R2 ou Kaggle Input.")
+         return 1
 
-        run([
-            sys.executable,
-            "limpeza_ia.py",
-            "--input_dir", str(local_raw),
-            "--output_dir", str(local_processed),
-            "--ambiente", "kaggle",
-        ], cwd=project_dir)
+    print("\n[INFO] Iniciando Limpeza IA (necessário para garantir formato StyleTTS2)...")
+    run([
+        sys.executable,
+        "limpeza_ia.py",
+        "--input_dir", str(local_raw),
+        "--output_dir", str(local_processed),
+        "--ambiente", "kaggle",
+        "--force",
+    ], cwd=project_dir)
 
     dataset_dir = Path("/kaggle/working/super_Voz_styletts2_data")
     prepare_cmd = [
